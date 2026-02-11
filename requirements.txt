@@ -1,0 +1,18 @@
+# Aircraft Health Monitoring System - Python Dependencies
+
+# Core Data Science Libraries
+pandas>=1.3.0
+numpy>=1.21.0
+
+# Machine Learning
+scikit-learn>=1.0.0
+
+# Model Persistence
+joblib>=1.0.0
+
+# Visualization
+matplotlib>=3.4.0
+seaborn>=0.11.0
+
+# GUI (Optional - only needed for GUI versions)
+# tkinter comes built-in with Python on most systems
