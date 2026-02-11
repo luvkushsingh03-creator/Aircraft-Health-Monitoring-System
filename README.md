@@ -1,6 +1,6 @@
 ✈ AI-Based Aircraft Health Monitoring System
 
- 📌 Project Overview
+ 📌 Project Overview::
 This project implements an AI-driven aircraft health monitoring system that analyzes telemetry sensor data to predict the health status of aircraft systems. The goal is to assist in pre-flight inspections and support predictive maintenance decisions using machine learning.
 The system processes structured telemetry inputs such as engine temperature, vibration levels, fuel pressure, and RPM to determine whether the aircraft condition is **Normal** or **Requires Attention**.
 
