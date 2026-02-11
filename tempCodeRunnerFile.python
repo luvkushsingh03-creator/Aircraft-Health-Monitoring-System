@@ -1,0 +1,292 @@
+# =========================================
+# Aircraft Health Monitoring System
+# FINAL FIXED VERSION
+# Version 5.1
+# =========================================
+
+import pandas as pd
+import numpy as np
+import os
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score,
+    f1_score, confusion_matrix, classification_report
+)
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend
+import matplotlib.pyplot as plt
+import seaborn as sns
+import joblib
+from datetime import datetime
+
+# =========================================
+# CONFIGURATION
+# =========================================
+DATA_PATH = r"E:\PROJECT.1\aircraft_telemetry_health_dataset.csv"
+MODEL_PATH = r"E:\PROJECT.1\aircraft_model.pkl"
+OUTPUT_DIR = r"E:\PROJECT.1\outputs"
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+print("=" * 70)
+print("AIRCRAFT HEALTH MONITORING SYSTEM".center(70))
+print("AI-Based Pre-Flight & In-Flight Health Prediction".center(70))
+print("=" * 70)
+
+
+# =========================================
+# IN-FLIGHT SAFETY CHECK
+# =========================================
+def check_critical_inflight_parameters(telemetry):
+    warnings = []
+    critical = []
+    safe = True
+
+    if telemetry['Oil_Pressure'] < 20:
+        critical.append("Oil Pressure dangerously low")
+        safe = False
+    elif telemetry['Oil_Pressure'] < 30:
+        warnings.append("Oil Pressure low")
+
+    if telemetry['Engine_Temp'] > 750:
+        critical.append("Engine temperature critical")
+        safe = False
+    elif telemetry['Engine_Temp'] > 700:
+        warnings.append("Engine temperature high")
+
+    if telemetry['Vibration'] > 15:
+        critical.append("Excessive vibration")
+        safe = False
+    elif telemetry['Vibration'] > 10:
+        warnings.append("High vibration")
+
+    if telemetry['Battery_Voltage'] < 22:
+        critical.append("Electrical failure imminent")
+        safe = False
+    elif telemetry['Battery_Voltage'] < 24:
+        warnings.append("Low battery voltage")
+
+    return safe, warnings, critical
+
+
+# =========================================
+# VISUALIZATION
+# =========================================
+def create_training_visualizations(model, X_train, X_test, y_train, y_test,
+                                   y_pred, label_encoder, feature_names):
+
+    print("  → Computing metrics...")
+    acc = accuracy_score(y_test, y_pred)
+    prec = precision_score(y_test, y_pred, average='weighted', zero_division=0)
+    rec = recall_score(y_test, y_pred, average='weighted', zero_division=0)
+    f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0)
+
+    cm = confusion_matrix(y_test, y_pred)
+
+    report = classification_report(
+        y_test, y_pred,
+        target_names=label_encoder.classes_,
+        output_dict=True,
+        zero_division=0
+    )
+
+    print("  → Generating plots...")
+    fig = plt.figure(figsize=(16, 12))
+
+    # Confusion Matrix
+    ax1 = plt.subplot(2, 3, 1)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=label_encoder.classes_,
+                yticklabels=label_encoder.classes_)
+    ax1.set_title("Confusion Matrix")
+
+    # Metrics
+    ax2 = plt.subplot(2, 3, 2)
+    ax2.bar(['Accuracy', 'Precision', 'Recall', 'F1'],
+            [acc, prec, rec, f1])
+    ax2.set_ylim(0, 1)
+    ax2.set_title("Performance Metrics")
+
+    # Feature Importance
+    ax3 = plt.subplot(2, 3, 3)
+    imp = pd.Series(model.feature_importances_, index=feature_names)
+    imp.nlargest(10).plot(kind='barh')
+    ax3.set_title("Top Features")
+
+    # Per-Class Metrics
+    ax4 = plt.subplot(2, 3, 4)
+    classes = label_encoder.classes_
+    ax4.bar(classes, [report[c]['precision'] for c in classes], label='Precision')
+    ax4.bar(classes, [report[c]['recall'] for c in classes],
+            bottom=[report[c]['precision'] for c in classes], label='Recall')
+    ax4.legend()
+    ax4.set_title("Per-Class Metrics")
+
+    # Summary
+    ax5 = plt.subplot(2, 3, 5)
+    ax5.axis('off')
+    ax5.text(0.1, 0.8,
+             f"Accuracy: {acc*100:.2f}%\n"
+             f"Precision: {prec*100:.2f}%\n"
+             f"Recall: {rec*100:.2f}%\n"
+             f"F1 Score: {f1*100:.2f}%",
+             fontsize=12)
+
+    fig.suptitle("Aircraft Health Model Training Report", fontsize=18)
+    plt.tight_layout()
+
+    path = os.path.join(
+        OUTPUT_DIR,
+        f"training_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+    )
+    print("  → Saving plot to disk...")
+    plt.savefig(path, dpi=300)
+    plt.close()
+
+    print(f"  ✓ Visualization saved: {path}")
+
+
+# =========================================
+# MODEL TRAINING
+# =========================================
+def train_model():
+    print("\n[TRAINING STARTED]")
+
+    print("→ Loading dataset...")
+    data = pd.read_csv(DATA_PATH)
+
+    X = data.drop("Health_Label", axis=1)
+    y = data["Health_Label"]
+
+    le = LabelEncoder()
+    y_enc = le.fit_transform(y)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y_enc, test_size=0.2, stratify=y_enc, random_state=42
+    )
+
+    scaler = StandardScaler()
+    X_train_s = scaler.fit_transform(X_train)
+    X_test_s = scaler.transform(X_test)
+
+    print("→ Training Random Forest (please wait)...")
+    model = RandomForestClassifier(
+        n_estimators=20,
+        max_depth=5,
+        min_samples_split=20,
+        min_samples_leaf=10,
+        random_state=42
+    )
+    model.fit(X_train_s, y_train)
+    print("✓ Training finished")
+
+    y_pred = model.predict(X_test_s)
+
+    print("→ Generating training report...")
+    create_training_visualizations(
+        model, X_train_s, X_test_s,
+        y_train, y_test, y_pred, le, X.columns.tolist()
+    )
+
+    pkg = {
+        'model': model,
+        'scaler': scaler,
+        'label_encoder': le,
+        'feature_names': X.columns.tolist(),
+        'training_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+    joblib.dump(pkg, MODEL_PATH)
+    print("✓ Model saved successfully")
+
+    return pkg, data
+
+
+# =========================================
+# LOAD MODEL
+# =========================================
+def load_model():
+    if os.path.exists(MODEL_PATH):
+        print("[INFO] Loading AI model...")
+        pkg = joblib.load(MODEL_PATH)
+        data = pd.read_csv(DATA_PATH)
+        print("[INFO] Model loaded successfully")
+        print(f"  Training date: {pkg['training_date']}")
+        return pkg, data
+    else:
+        return train_model()
+
+
+# =========================================
+# HEALTH PREDICTION
+# =========================================
+def predict_health(pkg):
+    print("\nHEALTH INSPECTION")
+
+    telemetry = {}
+    defaults = {
+        'Engine_Temp': 520, 'EGT': 600, 'Engine_RPM': 1000,
+        'Oil_Pressure': 40, 'Oil_Temp': 100, 'Fuel_Flow': 20,
+        'Vibration': 2, 'Battery_Voltage': 26, 'Battery_Current': 15,
+        'Ambient_Temp': 30, 'Airspeed': 0, 'Altitude': 0,
+        'Control_Surface_Status': 1,
+        'Time_Since_Maintenance': 100,
+        'Engine_Operating_Hours': 3000
+    }
+
+    for f in pkg['feature_names']:
+        val = input(f"{f} [{defaults[f]}]: ").strip()
+        telemetry[f] = float(val) if val else defaults[f]
+
+    safe, warn, crit = check_critical_inflight_parameters(telemetry)
+
+    if crit:
+        print("\n🚨 CRITICAL ALERTS:")
+        for c in crit:
+            print(" -", c)
+
+    X = np.array([[telemetry[f] for f in pkg['feature_names']]])
+    Xs = pkg['scaler'].transform(X)
+
+    pred = pkg['model'].predict(Xs)
+    label = pkg['label_encoder'].inverse_transform(pred)[0]
+
+    print("\nAI PREDICTION:", label)
+
+
+# =========================================
+# MAIN MENU
+# =========================================
+def main():
+    pkg, data = load_model()
+
+    while True:
+        print("\n" + "=" * 70)
+        print("MAIN MENU".center(70))
+        print("=" * 70)
+        print("1. Conduct Health Inspection")
+        print("2. Retrain Model & View Metrics")
+        print("3. Exit")
+
+        choice = input("\nSelect option (1-3): ").strip()
+
+        if choice == '1':
+            predict_health(pkg)
+
+        elif choice == '2':
+            pkg, data = train_model()
+
+        elif choice == '3':
+            print("\nExiting system. Stay safe!")
+            break
+
+        else:
+            print("Invalid choice.")
+
+        input("\n[Press Enter to return to MAIN MENU]")
+
+
+if __name__ == "__main__":
+    main()
